@@ -1,0 +1,18 @@
+{
+  "name": "file-upload-merge",
+  "version": "1.0.0",
+  "description": "File upload and merge with MD5 hash verification",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "spark-md5": "^3.0.2"
+  }
+}
