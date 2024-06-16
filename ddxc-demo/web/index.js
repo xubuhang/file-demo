@@ -10,7 +10,6 @@ async function showPath() {
     path.innerHTML = "生成MD5值中，请稍等...";
 
     const file = fileInput.files[0];
-
      // 获取CPU核心数
      const numCores = navigator.hardwareConcurrency || 4;
      const chunkSize = Math.ceil(file.size / numCores);
@@ -57,14 +56,17 @@ async function showPath() {
 }
 
 
-async function proceedWithUploadAndMerge(file, chunks, results, path) {
-    const spark = new SparkMD5.ArrayBuffer();
-    for (let hash of results) {
-        spark.append(hash);
-    }
-    const combinedHash = spark.end();
-    path.innerHTML = "生成的MD5值为：" + combinedHash;
 
+async function proceedWithUploadAndMerge(file, chunks, results, path) {
+    const combinedSpark = new SparkMD5.ArrayBuffer();
+            for (const chunk of chunks) {
+                const buffer = await chunk.arrayBuffer();
+                combinedSpark.append(buffer);
+            }
+            const combinedHash = combinedSpark.end();
+
+    path.innerHTML = "生成的MD5值为：" + combinedHash;
+console.log(combinedHash);
     // 上传每个分片
     path.innerHTML = "分片上传开始...";
     const existingChunks = await getExistingChunks(file.name);
@@ -73,6 +75,7 @@ async function proceedWithUploadAndMerge(file, chunks, results, path) {
             return uploadChunk(chunk, i, file.name, results[i]);
         }
     }).filter(Boolean); // 过滤掉undefined的项
+               
     Promise.all(uploadPromises).then(() => {
         path.innerHTML = "分片上传结束";
         path.innerHTML = "合并分片开始...";

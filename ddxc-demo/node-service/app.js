@@ -73,6 +73,11 @@ app.post('/merge', (req, res) => {
         return res.status(400).json({ error: 'No chunks found' });
     }
 
+    const mergedDir = path.dirname(mergedFilePath);
+    if (!fs.existsSync(mergedDir)) {
+        fs.mkdirSync(mergedDir, { recursive: true });
+    }
+
     const chunkFiles = fs.readdirSync(chunkDir);
     chunkFiles.sort((a, b) =>  {
         const indexA = parseInt(a.split('_')[0]);
@@ -80,40 +85,32 @@ app.post('/merge', (req, res) => {
         return indexA - indexB;
     }); // 按顺序排序
 
-    // 用于存储每个分片的哈希值
-    const chunkHashes = [];
     const writeStream = fs.createWriteStream(mergedFilePath);
 
     chunkFiles.forEach(chunkFile => {
         const chunkPath = path.join(chunkDir, chunkFile);
         const chunkData = fs.readFileSync(chunkPath);
         writeStream.write(chunkData);
-
-        // 获取文件名的后半部分（哈希值）
-        const hash = chunkFile.split('_')[1];
-        // 计算每个分片的哈希值并存储
-        // const hash = calculateFileHash(chunkData);
-        chunkHashes.push(hash);
-
         fs.unlinkSync(chunkPath); // 删除分片
     });
 
     writeStream.end();
-    fs.rmdirSync(chunkDir); // 删除分片目录
-
+    fs.rmdirSync(chunkDir);
     writeStream.on('finish', () => {
-       // 使用 SparkMD5 合并所有分片的哈希值为最终的组合哈希
-       const calculatedCombinedHash = calculateCombinedHash(chunkHashes);
-
-        console.log(`Calculated combined hash: ${calculatedCombinedHash}`);
-        console.log(`Expected combined hash: ${combinedHash}`);
-        if (calculatedCombinedHash !== combinedHash) {
-            fs.unlinkSync(mergedFilePath); // 删除合并的文件
-            console.log(`hash not equal: ${combinedHash}` + '!=' + calculatedCombinedHash);
-            return res.status(400).json({ error: 'Invalid combined hash' });
-        }
-
-        res.status(200).json({ message: 'File merged successfully', hash: calculatedCombinedHash });
+        // 使用 SparkMD5 计算合并文件的 MD5 哈希
+        calculateFileMD5(mergedFilePath)
+            .then(calculatedCombinedHash => {
+                if (calculatedCombinedHash !== combinedHash) {
+                    fs.unlinkSync(mergedFilePath); // 删除合并的文件
+                    return res.status(400).json({ error: 'Invalid combined hash' });
+                }
+                console.error('合并文件成功:'+calculatedCombinedHash);
+                res.status(200).json({ message: 'File merged successfully', hash: calculatedCombinedHash });
+            })
+            .catch(err => {
+                console.error('合并文件时出错：', err);
+                res.status(500).json({ error: 'Internal server error' });
+            });
     });
 
     writeStream.on('error', (err) => {
@@ -122,7 +119,25 @@ app.post('/merge', (req, res) => {
     });
 });
 
+// 计算文件的 MD5 哈希值
+function calculateFileMD5(filePath) {
+    return new Promise((resolve, reject) => {
+        const readStream = fs.createReadStream(filePath);
+        const spark = new SparkMD5.ArrayBuffer();
+        readStream.on('data', chunk => {
+            spark.append(chunk);
+        });
 
+        readStream.on('end', () => {
+            const hash = spark.end();
+            resolve(hash);
+        });
+
+        readStream.on('error', err => {
+            reject(err);
+        });
+    });
+}
 // 计算单个文件块的哈希值
 function calculateFileHash(chunkData) {
     const hash = SparkMD5.ArrayBuffer.hash(chunkData);
